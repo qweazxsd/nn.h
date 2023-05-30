@@ -16,30 +16,30 @@ typedef struct {
     size_t cols;
     size_t stride;
     float *ele;
-} Matrix;
+} Mat;
 
 #define MAT_ELE(m, i, j) (m).ele[(i)*(m).stride + (j)]
 
-Matrix matrix_alloc(size_t rows, size_t cols);
+Mat matrix_alloc(size_t rows, size_t cols);
 #define VEC_ALLOC(i) matrix_alloc((i), 1)  //allocate row vector
-Matrix matrix_eye_alloc(size_t n);
-Matrix matrix_row(Matrix m, size_t row);
-void matrix_populate(Matrix m, float *a, size_t len_a);  //DANGAROUS: NO CHECK FOR ARRAY SHAPE, JUST TOTAL NUMBER OF ELEMENTS
-void matrix_copy(Matrix dst, Matrix src);
-void matrix_fill(Matrix m, float v);
-void matrix_shuffle_rows(Matrix m);
-void matrix_rand(Matrix m, float low, float high);
-void matrix_mul (Matrix dst, Matrix a, Matrix b);
-void matrix_add(Matrix a, Matrix b);
-void matrix_print(Matrix m, const char *name);
+Mat matrix_eye_alloc(size_t n);
+Mat matrix_row(Mat m, size_t row);
+void matrix_populate(Mat m, float *a, size_t len_a);  //DANGAROUS: NO CHECK FOR ARRAY SHAPE, JUST TOTAL NUMBER OF ELEMENTS
+void matrix_copy(Mat dst, Mat src);
+void matrix_fill(Mat m, float v);
+void matrix_shuffle_rows(Mat m);
+void matrix_rand(Mat m, float low, float high);
+void matrix_mul (Mat dst, Mat a, Mat b);
+void matrix_add(Mat a, Mat b);
+void matrix_print(Mat m, const char *name);
 #define MAT_PRINT(m) matrix_print(m, #m);
-void matrix_act(Matrix m);
+void matrix_act(Mat m);
 
 typedef struct {
     size_t n_layers;
-    Matrix *ws;  // these are arrays of matrices
-    Matrix *bs;
-    Matrix *as;  // number of activations is 1 more than the number of layers
+    Mat *ws;  // these are arrays of matrices
+    Mat *bs;
+    Mat *as;  // number of activations is 1 more than the number of layers
 } NN;
 
 #define NN_INPUT(nn) (nn).as[0]
@@ -49,8 +49,8 @@ NN nn_alloc(size_t *arch, size_t arch_count);
 void nn_rand(NN nn, float low, float high);
 void nn_forward(NN nn);
 void nn_print(NN nn);
-void nn_backprop(NN nn, Matrix ti, Matrix to, float rate);
-float nn_cost(NN nn, Matrix ti, Matrix to);
+void nn_backprop(NN nn, Mat ti, Mat to, float rate);
+float nn_cost(NN nn, Mat ti, Mat to);
 
 #endif // NN_H_ 
 
@@ -80,9 +80,9 @@ float sigmoid_prime(float x) { //as a function of the activation itself
 #define ACT_PRIME sigmoid_prime
 #endif
 
-Matrix matrix_alloc(size_t rows, size_t cols) {
+Mat matrix_alloc(size_t rows, size_t cols) {
 	
-	Matrix m;
+	Mat m;
 	m.rows = rows;
 	m.cols = cols;
 	m.stride = cols;
@@ -93,9 +93,9 @@ Matrix matrix_alloc(size_t rows, size_t cols) {
 	return m;
 }
 
-Matrix matrix_eye_alloc(size_t n) {
+Mat matrix_eye_alloc(size_t n) {
 	
-	Matrix m;
+	Mat m;
 	m.rows = n;
 	m.cols = n;
 	m.stride = n;
@@ -114,15 +114,15 @@ Matrix matrix_eye_alloc(size_t n) {
 	return m;
 }
 
-Matrix matrix_row(Matrix m, size_t row) {
-    Matrix out = VEC_ALLOC(m.cols);
+Mat matrix_row(Mat m, size_t row) {
+    Mat out = VEC_ALLOC(m.cols);
     for (size_t i = 0; i < m.cols; ++i) {
         MAT_ELE(out, i, 0) = MAT_ELE(m, row, i);
     }
     return out;
 }
 
-void matrix_populate(Matrix m, float *a, size_t len_a) {
+void matrix_populate(Mat m, float *a, size_t len_a) {
     if (len_a != m.rows*m.cols) {
         printf("ERROR: Array length must be equal to total number of elements.");
         exit(1);
@@ -135,7 +135,7 @@ void matrix_populate(Matrix m, float *a, size_t len_a) {
 	}
 }
 
-void matrix_copy(Matrix dst, Matrix src) {
+void matrix_copy(Mat dst, Mat src) {
     assert((dst.rows==src.rows)&&(dst.cols==src.cols));
 
 	for (size_t i = 0; i < dst.rows; i++) {
@@ -146,7 +146,7 @@ void matrix_copy(Matrix dst, Matrix src) {
 
 }
 
-void matrix_fill(Matrix m, float v) {
+void matrix_fill(Mat m, float v) {
 	for (size_t i = 0; i < m.rows; i++) {
 		for (size_t j = 0; j < m.cols; j++) {
 			MAT_ELE(m, i, j) = v;
@@ -154,7 +154,7 @@ void matrix_fill(Matrix m, float v) {
 	}
 }
 
-void matrix_shuffle_rows(Matrix m) {
+void matrix_shuffle_rows(Mat m) {
     for (size_t i = 0; i < m.rows; ++i) {
         srand(time(NULL));
         size_t j = rand_int(i, m.rows-1);
@@ -168,7 +168,7 @@ void matrix_shuffle_rows(Matrix m) {
     }
 }
 
-void matrix_rand(Matrix m, float low, float high) {
+void matrix_rand(Mat m, float low, float high) {
     for (size_t i = 0; i < m.rows; ++i) {
         for (size_t j = 0; j < m.cols; ++j) {
             MAT_ELE(m, i, j) = rand_float(low, high);
@@ -176,7 +176,7 @@ void matrix_rand(Matrix m, float low, float high) {
     }
 }
 
-void matrix_mul (Matrix dst, Matrix a, Matrix b) {
+void matrix_mul (Mat dst, Mat a, Mat b) {
 	if (a.cols != b.rows) {
 		printf("ERROR: First matrix column number must be equal to second matrix row number.");
 		exit(1);
@@ -203,7 +203,7 @@ void matrix_mul (Matrix dst, Matrix a, Matrix b) {
 }
 
 
-void matrix_add(Matrix dst, Matrix a) {
+void matrix_add(Mat dst, Mat a) {
 	if (dst.rows != a.rows) {
 		printf("ERROR: First matrix row number must be equal to second matrix row number.");
 		exit(1);
@@ -221,7 +221,7 @@ void matrix_add(Matrix dst, Matrix a) {
     }
 }
 
-void matrix_print(Matrix m, const char *name) {
+void matrix_print(Mat m, const char *name) {
 	
 	printf("%s =\n", name);
 	for (size_t i = 0; i < m.rows; i++) {
@@ -235,7 +235,7 @@ void matrix_print(Matrix m, const char *name) {
     printf("\n");
 }
 
-void matrix_act(Matrix m) {
+void matrix_act(Mat m) {
     for (size_t i = 0; i < m.rows; ++i) {
         for (size_t j = 0 ; j < m.cols; ++j) {
             MAT_ELE(m, i, j) = ACT(MAT_ELE(m, i, j));
@@ -292,7 +292,7 @@ void nn_print(NN nn) {
     }
 }
 
-void nn_backprop(NN nn, Matrix ti, Matrix to, float rate) {
+void nn_backprop(NN nn, Mat ti, Mat to, float rate) {
     assert(ti.cols == NN_INPUT(nn).rows);
     assert(to.cols == NN_OUTPUT(nn).rows);
     assert(ti.rows == to.rows);
@@ -300,7 +300,7 @@ void nn_backprop(NN nn, Matrix ti, Matrix to, float rate) {
     size_t n = ti.rows;  //number of inputs
 
     //creating a duplicate of the NN activations to store dCda
-    Matrix *da;
+    Mat *da;
     da = malloc(sizeof(*da)*(nn.n_layers+1));
     assert(da!=NULL);
 
@@ -341,7 +341,7 @@ void nn_backprop(NN nn, Matrix ti, Matrix to, float rate) {
     }
 }
 
-float nn_cost(NN nn, Matrix ti, Matrix to) {
+float nn_cost(NN nn, Mat ti, Mat to) {
     assert(ti.cols == NN_INPUT(nn).rows);
     assert(to.cols == NN_OUTPUT(nn).rows);
     assert(ti.rows == to.rows);
@@ -350,8 +350,8 @@ float nn_cost(NN nn, Matrix ti, Matrix to) {
 
     float c = 0;
     for (size_t i = 0; i < n; ++i) {  // for every input
-        Matrix x = matrix_row(ti, i);
-        Matrix y = matrix_row(to, i);
+        Mat x = matrix_row(ti, i);
+        Mat y = matrix_row(to, i);
         // setting NN_INPUT as training_input
         matrix_copy(NN_INPUT(nn), x);
         nn_forward(nn);
@@ -365,5 +365,8 @@ float nn_cost(NN nn, Matrix ti, Matrix to) {
     return c/n;
 }
 
+#ifdef NN_GYM
+#include <raylib.h>
+#endif // NN_GYM
 #endif // NN_IMPLEMENTATION 
 
