@@ -516,7 +516,7 @@ void cost_plot_render(Plot plot, size_t epoch, size_t max_epochs, Box b) {
         float y2 = b.ypad + ( 1 - (plot.items[i+1]-min)/(max-min) )*b.l;
         DrawLineEx((Vector2){x1, y1}, (Vector2){x2, y2}, line_thick*0.7, RED);
     }
-    snprintf(buf, sizeof(buf), "Epoch %lu/%d", epoch, max_epochs);
+    snprintf(buf, sizeof(buf), "Epoch %lu/%lu", epoch, max_epochs);
     DrawText(buf, b.xpad+b.w-9*font_s, b.ypad+b.l+2*line_thick, font_s, RAYWHITE);
     DrawText("Cost", b.xpad-0.6*font_s, b.ypad-1.1*font_s, font_s, RAYWHITE);
     DrawLineEx((Vector2){b.xpad, b.ypad+b.l}, (Vector2){b.xpad+b.w, b.ypad+b.l}, 0.01*b.l, RAYWHITE);
