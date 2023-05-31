@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <raylib.h>
 #include <stdbool.h>
@@ -31,6 +32,7 @@ int main() {
     assert((chosen_input>=0)&&(chosen_input<arch[0]));
     
     NN nn = nn_alloc(arch, ARRAY_LEN(arch));
+    Plot plot = {0};
 
     srand(time(NULL));
     nn_rand(nn, -1, 1);
@@ -54,10 +56,10 @@ int main() {
     to.ele = tao;
 
     float win_width = WIN_WIDTH_RATIO*WIN_SCALE;
-    float win_lenth = WIN_LENGTH_RATIO*WIN_SCALE;
+    float win_length = WIN_LENGTH_RATIO*WIN_SCALE;
     
-    //SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(win_width, win_lenth, "Test");
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(win_width, win_length, "NN");
 
     SetTargetFPS(FPS);
     
@@ -71,120 +73,58 @@ int main() {
             epoch = 0;
             srand(time(NULL));
             nn_rand(nn, -1, 1);
+            plot.count = 0; 
         }
         
         for (size_t i = 0 ; i < EPOCHS_PER_FRAME && epoch<MAX_EPOCHS && paused; ++i) {
             nn_backprop(nn, ti, to, RATE);
+            da_append(&plot, nn_cost(nn, ti, to));
             epoch +=1;
         }
 
-        float box_w = win_width*0.3;
-        float box_l = win_lenth*0.3;
-        float xoffset = win_width*0.2;
-        float yoffset = win_lenth*0.09;
-        float box_xpadl = (win_width-box_w)/2 + xoffset;
-        float box_ypadt = (win_lenth-box_l)/2 + yoffset;
-        float line_thick = 2;
+        int win_w = GetRenderWidth();
+        int win_l = GetRenderHeight(); 
 
-        float circ_r = win_lenth*0.04;
-        float neuron_distx = box_w/(nn.n_layers);
-        Vector2 neuron_center;
-        Vector2 pneuron_center;
-        Color neuron_color_low = {0x00, 0x00, 0x00, 0xFF};
-        Color neuron_color_high = {0xFF, 0xFF, 0xFF, 0xFF};
-        Color w_color_low = {0xED, 0x53, 0x53, 0xFF};
-        Color w_color_high = {0x36, 0xBE, 0x7c, 0xFF};
-        //Color w_color_low = {0xFF, 0x00, 0xFF, 0xFF};
-        //Color w_color_high = {0x00, 0xFF, 0x00, 0xFF};
+        int font_s = (int) (win_w*0.01);
         char buf[256];
 
         BeginDrawing();
+        {
 
-            DrawText("XOR Gate", win_width*0.05, win_lenth*0.07, 60, (Color){0xE1, 0x12, 0x99, 0xFF});  
+            ClearBackground((Color){0x19, 0x19, 0x19, 0xFF});
+
+            DrawText("XOR Gate", win_w*0.05, win_l*0.07, font_s*6, (Color){0xE1, 0x12, 0x99, 0xFF});  
             matrix_copy(NN_INPUT(nn), matrix_row(ti, chosen_input));
             nn_forward(nn);
 
 
-            ClearBackground((Color){0x19, 0x19, 0x19, 0xFF});
-        
-            for (size_t l = 0 ; l < nn.n_layers+1; ++l) {
-                size_t n = nn.as[l].rows;
-                for (size_t i = 0; i < n; ++i) {
-                    if (n==1) {
-                        neuron_center.x = box_xpadl+l*neuron_distx;
-                        neuron_center.y = box_ypadt+box_l/2;
-                    }
-                    else {
-                        neuron_center.x = box_xpadl+l*neuron_distx;
-                        neuron_center.y = box_ypadt+i*box_l/(n-1);
-                    }
+            float nn_xoffset = win_w*0.57;
+            float nn_yoffset = win_l*0.08;
+            Box nn_box = box_init(win_w*0.35, win_l*0.35, nn_xoffset, nn_yoffset, 0);
+            nn_render(nn, ti, chosen_input, nn_box);
 
-                    if (l>0 ) {
-                        size_t np = nn.as[l-1].rows;
-                        for (size_t j = 0 ; j < np; ++j) {
-                            w_color_high.a = floorf(255.f*sigmoid(MAT_ELE(nn.ws[l-1], i, j)));
-                            if (np==1) {
-                                pneuron_center.x = box_xpadl+(l-1)*neuron_distx;
-                                pneuron_center.y = box_ypadt+box_l/2;
-                            }
-                            else {
-                                pneuron_center.x = box_xpadl+(l-1)*neuron_distx;
-                                pneuron_center.y = box_ypadt+j*box_l/(np-1);
-                            }
+            float cost_plot_xoffset = win_w*0.05; 
+            float cost_plot_yoffset = win_l*0.3; 
+            Box cost_plot_box = box_init(win_w*0.35, win_l*0.5, cost_plot_xoffset, cost_plot_yoffset, 0);
+            cost_plot_render(plot, epoch, MAX_EPOCHS, cost_plot_box);
 
-                            DrawLineEx(neuron_center, pneuron_center, box_l*0.015 , ColorAlphaBlend(w_color_low, w_color_high, WHITE));
-                        }
-                    } 
-                }
-            }
+            float out_xoffset = win_w*0.6;
+            float out_yoffset = win_l*0.5;
+            Box out_box = box_init(win_w*0.20, win_l*0.45, out_xoffset, out_yoffset, 0);
 
-            for (size_t l = 0 ; l < nn.n_layers+1; ++l) {
-                size_t n = nn.as[l].rows;
-                for (size_t i = 0; i < n; ++i) {
-                    neuron_color_high.a = floorf(255.f*MAT_ELE(nn.as[l], i, 0));
+            font_s = (int) (out_box.w*0.2);
+            float text_xpad = (out_box.w-font_s)/2;
+            DrawText("Output ", out_box.xpad +text_xpad-0.3*font_s, out_box.ypad, font_s, RAYWHITE);
 
-                    if (n==1) {
-                        neuron_center.x = box_xpadl+l*neuron_distx;
-                        neuron_center.y = box_ypadt+box_l/2;
-                    }
-                    else {
-                        neuron_center.x = box_xpadl+l*neuron_distx;
-                        neuron_center.y = box_ypadt+i*box_l/(n-1);
-                    }
-                    
-                    if (l>0 ) {
-                        DrawCircleV(neuron_center, circ_r, ColorAlphaBlend(neuron_color_low, neuron_color_high, WHITE));
-                        DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , (Color){0x90, 0x90, 0x90, 0xFF});
-                        snprintf(buf, sizeof(buf), "%.2f", MAT_ELE(nn.as[l], i, 0));
-                        DrawText(buf, neuron_center.x - circ_r*0.45, neuron_center.y - circ_r*0.25, 20, RED);
-                    }
-                    else {
-                        DrawCircleV(neuron_center, circ_r, ColorAlphaBlend(neuron_color_low, neuron_color_high, WHITE));
-                        DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , (Color){0x90, 0x90, 0x90, 0xFF});
-                        snprintf(buf, sizeof(buf), "%.2f", MAT_ELE(ti, chosen_input, i));
-                        DrawText(buf, neuron_center.x - circ_r*0.45, neuron_center.y - circ_r*0.25, 20, RED);
-                    }
-                }
-            }
-            
-            snprintf(buf, sizeof(buf), "Epoch = %zu/%d", epoch, MAX_EPOCHS);
-            DrawText(buf, win_width*0.35, win_lenth*0.07, 50, RAYWHITE);
-            snprintf(buf, sizeof(buf), "Cost = %.3f", nn_cost(nn, ti, to));
-            DrawText(buf, win_width*0.1, win_lenth*0.3, 50, RAYWHITE);
-            
+            font_s = (int) (out_box.w*0.17);
             for (size_t i = 0 ; i < ti.rows; ++i) {
                 matrix_copy(NN_INPUT(nn), matrix_row(ti, i));
                 nn_forward(nn);
                 snprintf(buf, sizeof(buf), "%.0f    %.0f  ->  %.3f", MAT_ELE(ti, i, 0), MAT_ELE(ti, i, 1), MAT_ELE(NN_OUTPUT(nn), 0, 0));
-                DrawText(buf, win_width*0.12, win_lenth*0.5+0.1*win_lenth*i, 30 , RAYWHITE);
+                DrawText(buf, out_box.xpad, out_box.ypad+1.5*font_s*(i+1), font_s, RAYWHITE);
                 
             }
-            
-            //DrawLineEx((Vector2) {box_xpadl, box_ypadt}, (Vector2){box_xpadl+box_w, box_ypadt}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
-            //DrawLineEx((Vector2) {box_xpadl, box_ypadt+box_l}, (Vector2){box_xpadl+box_w, box_ypadt+box_l}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
-            //DrawLineEx((Vector2) {box_xpadl, box_ypadt}, (Vector2){box_xpadl, box_ypadt+box_l}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
-            //DrawLineEx((Vector2) {box_xpadl+box_w, box_ypadt}, (Vector2){box_xpadl+box_w, box_ypadt+box_l}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
-            //DrawCircle(win_width/2 , win_lenth/2 , 4, RED); 
+        }
         EndDrawing();
     }
 

@@ -52,6 +52,34 @@ void nn_print(NN nn);
 void nn_backprop(NN nn, Mat ti, Mat to, float rate);
 float nn_cost(NN nn, Mat ti, Mat to);
 
+typedef struct {
+    float *items;
+    size_t count;
+    size_t capacity;
+} Plot;
+
+#define DA_INIT_CAP 256
+#define da_append(da, item)                                                          \
+    do {                                                                             \
+        if ((da)->count >= (da)->capacity) {                                         \
+            (da)->capacity = (da)->capacity == 0 ? DA_INIT_CAP : (da)->capacity*2;   \
+            (da)->items = realloc((da)->items, (da)->capacity*sizeof(*(da)->items)); \
+            assert((da)->items != NULL);                                             \
+        }                                                                            \
+                                                                                     \
+        (da)->items[(da)->count++] = (item);                                         \
+    } while (0)
+
+typedef struct {
+    float l;
+    float w;
+    float xpad;
+    float ypad;
+} Box;
+
+Box box_init(float w, float l, float xoffset, float yoffset, int draw_box);
+void nn_render(NN nn, Mat ti, size_t chosen_input, Box box);
+
 #endif // NN_H_ 
 
 #ifdef NN_IMPLEMENTATION
@@ -367,6 +395,134 @@ float nn_cost(NN nn, Mat ti, Mat to) {
 
 #ifdef NN_GYM
 #include <raylib.h>
+
+Box box_init(float w, float l, float xoffset, float yoffset, int draw_box) {
+    Box b; 
+    b.l = l;
+    b.w = w;
+    b.xpad = xoffset;
+    b.ypad = yoffset;
+
+    if (draw_box) {
+        float line_thick = b.l*0.01;
+        DrawLineEx((Vector2) {b.xpad, b.ypad}, (Vector2){b.xpad+b.w, b.ypad}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
+        DrawLineEx((Vector2) {b.xpad, b.ypad+b.l}, (Vector2){b.xpad+b.w, b.ypad+b.l}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
+        DrawLineEx((Vector2) {b.xpad, b.ypad}, (Vector2){b.xpad, b.ypad+b.l}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
+        DrawLineEx((Vector2) {b.xpad+b.w, b.ypad}, (Vector2){b.xpad+b.w, b.ypad+b.l}, line_thick,(Color){0x00, 0xFF, 0x00, 0xFF});
+        DrawCircle(b.xpad+b.w/2 , b.ypad+b.l/2 , 5, RED); 
+    }
+    return b;
+}
+
+void nn_render(NN nn, Mat ti, size_t chosen_input, Box box) {
+    float line_thick = box.l*0.01;
+
+    float neuron_distx = box.w/(nn.n_layers);
+    Vector2 neuron_center;
+    Vector2 pneuron_center;
+    Color neuron_color_low = {0x00, 0x00, 0x00, 0xFF};
+    Color neuron_color_high = {0xFF, 0xFF, 0xFF, 0xFF};
+    Color w_color_low = {0xFD, 0x53, 0x53, 0xFF};
+    Color w_color_high = {0x36, 0xDE, 0x7c, 0xFF};
+    char buf[256];
+
+    //start with rendering the weights to hide them behind the neurons
+    for (size_t l = 0 ; l < nn.n_layers+1; ++l) {
+        size_t n = nn.as[l].rows;
+        for (size_t i = 0; i < n; ++i) {
+            if (n==1) {
+                neuron_center.x = box.xpad+l*neuron_distx;
+                neuron_center.y = box.ypad+box.l/2;
+            }
+            else {
+                neuron_center.x = box.xpad+l*neuron_distx;
+                neuron_center.y = box.ypad+i*box.l/(n-1);
+            }
+
+            if (l>0 ) {
+                size_t np = nn.as[l-1].rows;
+                for (size_t j = 0 ; j < np; ++j) {
+                    w_color_high.a = floorf(255.f*sigmoid(MAT_ELE(nn.ws[l-1], i, j)));
+                    if (np==1) {
+                        pneuron_center.x = box.xpad+(l-1)*neuron_distx;
+                        pneuron_center.y = box.ypad+box.l/2;
+                    }
+                    else {
+                        pneuron_center.x = box.xpad+(l-1)*neuron_distx;
+                        pneuron_center.y = box.ypad+j*box.l/(np-1);
+                    }
+
+                    DrawLineEx(neuron_center, pneuron_center, line_thick, ColorAlphaBlend(w_color_low, w_color_high, WHITE));
+                }
+            } 
+        }
+    }
+
+    //render the neorons
+    for (size_t l = 0 ; l < nn.n_layers+1; ++l) {
+        size_t n = nn.as[l].rows;
+        float circ_r = box.l/n*0.2;
+        int font_s = (int) (circ_r*0.6);
+        for (size_t i = 0; i < n; ++i) {
+            neuron_color_high.a = floorf(255.f*MAT_ELE(nn.as[l], i, 0));
+
+            if (n==1) {
+                neuron_center.x = box.xpad+l*neuron_distx;
+                neuron_center.y = box.ypad+box.l/2;
+            }
+            else {
+                neuron_center.x = box.xpad+l*neuron_distx;
+                neuron_center.y = box.ypad+i*box.l/(n-1);
+            }
+            
+            if (l>0 ) {
+                DrawCircleV(neuron_center, circ_r, ColorAlphaBlend(neuron_color_low, neuron_color_high, WHITE));
+                DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , (Color){0x90, 0x90, 0x90, 0xFF});
+                if (l == nn.n_layers) {
+                    snprintf(buf, sizeof(buf), "%.2f", MAT_ELE(nn.as[l], i, 0));
+                    DrawText(buf, neuron_center.x - 1.7*font_s/2, neuron_center.y - font_s/2, font_s, RED);
+                }
+            }
+            else {
+                DrawCircleV(neuron_center, circ_r, ColorAlphaBlend(neuron_color_low, neuron_color_high, WHITE));
+                DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , (Color){0x90, 0x90, 0x90, 0xFF});
+                snprintf(buf, sizeof(buf), "%.2f", MAT_ELE(ti, chosen_input, i));
+                DrawText(buf, neuron_center.x - 1.7*font_s/2, neuron_center.y - font_s/2, font_s, RED);
+            }
+        }
+    }
+} 
+
+void cost_plot_render(Plot plot, size_t epoch, size_t max_epochs, Box b) {
+    float max = FLT_MIN;
+    float min = FLT_MAX;
+    int font_s = (int) (b.l*0.05);
+    float line_thick = b.l*0.01;
+    char buf[64];
+
+    for (size_t i = 0 ; i < plot.count; ++i) {
+        if (plot.items[i]<min) min=plot.items[i];
+        if (plot.items[i]>max) max=plot.items[i];
+    }
+
+    if (min>0) min=0;
+        
+    for (size_t i = 0 ; i+1 < plot.count; ++i) {  //+1 to not draw on the first point 
+        size_t n = plot.count;
+        if (n<1000) n=1000;
+        float x1 = b.xpad + line_thick + b.w/n*i;
+        float x2 = b.xpad + line_thick + b.w/n*(i+1);
+        float y1 = b.ypad + ( 1 - (plot.items[i]-min)/(max-min) )*b.l;
+        float y2 = b.ypad + ( 1 - (plot.items[i+1]-min)/(max-min) )*b.l;
+        DrawLineEx((Vector2){x1, y1}, (Vector2){x2, y2}, line_thick*0.7, RED);
+    }
+    snprintf(buf, sizeof(buf), "Epoch %lu/%d", epoch, max_epochs);
+    DrawText(buf, b.xpad+b.w-9*font_s, b.ypad+b.l+2*line_thick, font_s, RAYWHITE);
+    DrawText("Cost", b.xpad-0.6*font_s, b.ypad-1.1*font_s, font_s, RAYWHITE);
+    DrawLineEx((Vector2){b.xpad, b.ypad+b.l}, (Vector2){b.xpad+b.w, b.ypad+b.l}, 0.01*b.l, RAYWHITE);
+    DrawLineEx((Vector2){b.xpad, b.ypad+b.l}, (Vector2){b.xpad, b.ypad}, 0.01*b.l, RAYWHITE);
+
+}
 #endif // NN_GYM
 #endif // NN_IMPLEMENTATION 
 
