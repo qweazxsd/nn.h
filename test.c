@@ -1,23 +1,13 @@
-#include "raylib.h"
-
+#include "data.c"
+#include <stdio.h>
 int main (int argc, char *argv[])
 {
-    const int Width = 800;    
-    const int Length = 600;    
-
-    InitWindow(Width, Length, "Test");
-
-    SetTargetFPS(60);
-
-    while (!WindowShouldClose()) {
-        BeginDrawing();
-
-            ClearBackground(RAYWHITE);
-            DrawCircle(Width/2 , Length/2 , 100, RED);
-        EndDrawing();
-
+    
+    for (size_t i = 0; i < rows; i++) {
+        for (size_t j = 0; j < cols; j++) {
+            printf("%f ", data[i*cols+j]);
+        }
+        printf("\n");
     }
-
-    CloseWindow();
     return 0;
 }

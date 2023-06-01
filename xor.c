@@ -4,11 +4,14 @@
 #include <raylib.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #define NN_IMPLEMENTATION
 #define NN_GYM
 #include "nn.h"
-
+#include "rlgl.h"
+#include "stb_image.h"
+#include "stb_image_write.h"
 //---------------------------------------------------
 //---------------- HYPER PARAMETERS -----------------
 //---------------------------------------------------
@@ -19,7 +22,7 @@ size_t arch[] = {2, 2, 1};
 #define WIN_LENGTH_RATIO 9
 #define WIN_SCALE 100
 #define MAX_EPOCHS 10*1000
-#define EPOCHS_PER_FRAME 3
+#define EPOCHS_PER_FRAME 100 
 #define RATE 1.f
 size_t chosen_input = 1;
 int paused = false;
@@ -65,6 +68,9 @@ int main() {
     
     size_t epoch = 0;
     while (!WindowShouldClose()) {
+        int win_w = GetRenderWidth();
+        int win_l = GetRenderHeight(); 
+
         if (IsKeyPressed(KEY_SPACE)) {
             paused = !paused;
         }
@@ -76,14 +82,18 @@ int main() {
             plot.count = 0; 
         }
         
+        if (IsKeyPressed(KEY_P)) {
+            //TakeScreenshot("output.png");
+            //unsigned char *pixels = rlReadScreenPixels(win_w, win_l);
+            //Image screenshot = LoadImageFromScreen();
+            //stbi_write_png("output.png", win_w, win_l, 4, pixels, win_w*4*sizeof(*pixels));
+        }
+
         for (size_t i = 0 ; i < EPOCHS_PER_FRAME && epoch<MAX_EPOCHS && paused; ++i) {
             nn_backprop(nn, ti, to, RATE);
             da_append(&plot, nn_cost(nn, ti, to));
             epoch +=1;
         }
-
-        int win_w = GetRenderWidth();
-        int win_l = GetRenderHeight(); 
 
         int font_s = (int) (win_w*0.01);
         char buf[256];
@@ -96,25 +106,33 @@ int main() {
             DrawText("XOR Gate", win_w*0.05, win_l*0.07, font_s*6, (Color){0xE1, 0x12, 0x99, 0xFF});  
             matrix_copy(NN_INPUT(nn), matrix_row(ti, chosen_input));
             nn_forward(nn);
+            
+            //render the NN
+            Box nn_box = box_init(win_w*0.35, win_l*0.35, win_w*0.57, win_l*0.08, 0);
+            size_t selected_neuron[2];
+            nn_render(nn, ti, chosen_input, nn_box, selected_neuron);
 
-
-            float nn_xoffset = win_w*0.57;
-            float nn_yoffset = win_l*0.08;
-            Box nn_box = box_init(win_w*0.35, win_l*0.35, nn_xoffset, nn_yoffset, 0);
-            nn_render(nn, ti, chosen_input, nn_box);
-
-            float cost_plot_xoffset = win_w*0.05; 
-            float cost_plot_yoffset = win_l*0.3; 
-            Box cost_plot_box = box_init(win_w*0.35, win_l*0.5, cost_plot_xoffset, cost_plot_yoffset, 0);
+            //after we know the selected_neuron we can calculate the activations of due to previous neurons
+            Image neuron_a = GenImageColor(1 , ti.rows, BLACK);
+            for (size_t i = 0 ; i < ti.rows; ++i) {
+                matrix_copy(NN_INPUT(nn), matrix_row(ti, i));
+                nn_forward(nn);
+                unsigned char x = 255 * MAT_ELE(nn.as[selected_neuron[0]], selected_neuron[1], 0);  //DANGAROUS: only works if the activation is in the range [0,1] like if the activation func is sigmoid
+                printf("%u\n", x);
+                ImageDrawPixel(&neuron_a, 0 , i, (Color){x,x,x,0xFF});
+            }
+            DrawTextureEx(LoadTextureFromImage(neuron_a),(Vector2){win_w*0.59,win_l*0.59}, 0 , win_w*0.045, WHITE);
+            
+            //render the cosst plot
+            Box cost_plot_box = box_init(win_w*0.35, win_l*0.5, win_w*0.05, win_l*0.3, 0);
             cost_plot_render(plot, epoch, MAX_EPOCHS, cost_plot_box);
 
-            float out_xoffset = win_w*0.6;
-            float out_yoffset = win_l*0.5;
-            Box out_box = box_init(win_w*0.20, win_l*0.45, out_xoffset, out_yoffset, 0);
+            //the output of each NN is rendered differently
+            Box out_box = box_init(win_w*0.2, win_l*0.45, win_w*0.65, win_l*0.5, 0);
 
             font_s = (int) (out_box.w*0.2);
             float text_xpad = (out_box.w-font_s)/2;
-            DrawText("Output ", out_box.xpad +text_xpad-0.3*font_s, out_box.ypad, font_s, RAYWHITE);
+            DrawText("Output", out_box.xpad +text_xpad-0.3*font_s, out_box.ypad, font_s, RAYWHITE);
 
             font_s = (int) (out_box.w*0.17);
             for (size_t i = 0 ; i < ti.rows; ++i) {

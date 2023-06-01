@@ -77,8 +77,11 @@ typedef struct {
     float ypad;
 } Box;
 
+#ifdef NN_GYM
+#include <raylib.h>
+
 Box box_init(float w, float l, float xoffset, float yoffset, int draw_box);
-void nn_render(NN nn, Mat ti, size_t chosen_input, Box box);
+void nn_render(NN nn, Mat ti, size_t chosen_input, Box box, size_t *selected_neuron);
 
 #endif // NN_H_ 
 
@@ -393,9 +396,6 @@ float nn_cost(NN nn, Mat ti, Mat to) {
     return c/n;
 }
 
-#ifdef NN_GYM
-#include <raylib.h>
-
 Box box_init(float w, float l, float xoffset, float yoffset, int draw_box) {
     Box b; 
     b.l = l;
@@ -414,7 +414,12 @@ Box box_init(float w, float l, float xoffset, float yoffset, int draw_box) {
     return b;
 }
 
-void nn_render(NN nn, Mat ti, size_t chosen_input, Box box) {
+void nn_render(NN nn, Mat ti, size_t chosen_input, Box box, size_t *selected_neuron) {
+    if (ARRAY_LEN(selected_neuron)>2) {
+        printf("ERROR: The selected nueron has only a layer and index.\n");
+        exit(1);
+    }
+
     float line_thick = box.l*0.01;
 
     float neuron_distx = box.w/(nn.n_layers);
@@ -424,11 +429,14 @@ void nn_render(NN nn, Mat ti, size_t chosen_input, Box box) {
     Color neuron_color_high = {0xFF, 0xFF, 0xFF, 0xFF};
     Color w_color_low = {0xFD, 0x53, 0x53, 0xFF};
     Color w_color_high = {0x36, 0xDE, 0x7c, 0xFF};
+    float circ_r;
+    size_t n, np;
     char buf[256];
+    int font_s;
 
     //start with rendering the weights to hide them behind the neurons
     for (size_t l = 0 ; l < nn.n_layers+1; ++l) {
-        size_t n = nn.as[l].rows;
+        n = nn.as[l].rows;
         for (size_t i = 0; i < n; ++i) {
             if (n==1) {
                 neuron_center.x = box.xpad+l*neuron_distx;
@@ -440,7 +448,7 @@ void nn_render(NN nn, Mat ti, size_t chosen_input, Box box) {
             }
 
             if (l>0 ) {
-                size_t np = nn.as[l-1].rows;
+                np = nn.as[l-1].rows;
                 for (size_t j = 0 ; j < np; ++j) {
                     w_color_high.a = floorf(255.f*sigmoid(MAT_ELE(nn.ws[l-1], i, j)));
                     if (np==1) {
@@ -458,14 +466,14 @@ void nn_render(NN nn, Mat ti, size_t chosen_input, Box box) {
         }
     }
 
-    //render the neorons
+    //find closest neuron to the mouse
+    float min_d2 = FLT_MAX;
+    float d2;
     for (size_t l = 0 ; l < nn.n_layers+1; ++l) {
-        size_t n = nn.as[l].rows;
-        float circ_r = box.l/n*0.2;
-        int font_s = (int) (circ_r*0.6);
+        n = nn.as[l].rows;
+        circ_r = box.l/n*0.2;
         for (size_t i = 0; i < n; ++i) {
-            neuron_color_high.a = floorf(255.f*MAT_ELE(nn.as[l], i, 0));
-
+            //first calculate neuron center
             if (n==1) {
                 neuron_center.x = box.xpad+l*neuron_distx;
                 neuron_center.y = box.ypad+box.l/2;
@@ -475,17 +483,53 @@ void nn_render(NN nn, Mat ti, size_t chosen_input, Box box) {
                 neuron_center.y = box.ypad+i*box.l/(n-1);
             }
             
+            //then calculate distance between the neuron and the mouse
+            d2 = sqrtf((neuron_center.x-(float)GetMouseX())*(neuron_center.x-(float)GetMouseX())+(neuron_center.y-(float)GetMouseY())*(neuron_center.y-(float)GetMouseY()));
+            if ((l>0)&&(d2<min_d2)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&(d2<circ_r)) {
+                min_d2 = d2;
+                selected_neuron[0] = l;
+                selected_neuron[1] = i;
+            }
+        }
+    }
+
+            Color ring_color;
+    //render the neorons
+    for (size_t l = 0 ; l < nn.n_layers+1; ++l) {
+        n = nn.as[l].rows;
+        circ_r = box.l/n*0.2;
+        font_s = (int) (circ_r*0.6);
+        for (size_t i = 0; i < n; ++i) {
+            neuron_color_high.a = floorf(255.f*MAT_ELE(nn.as[l], i, 0));
+
+            //first calculate neuron center
+            if (n==1) {
+                neuron_center.x = box.xpad+l*neuron_distx;
+                neuron_center.y = box.ypad+box.l/2;
+            }
+            else {
+                neuron_center.x = box.xpad+l*neuron_distx;
+                neuron_center.y = box.ypad+i*box.l/(n-1);
+            }
+
             if (l>0 ) {
+                if ((l==selected_neuron[0])&&(i==selected_neuron[1])) {
+                    ring_color = GetColor(0xEA4646FF);
+                }
+                else {
+                    ring_color = (Color){0x90, 0x90, 0x90, 0xFF};
+                }
                 DrawCircleV(neuron_center, circ_r, ColorAlphaBlend(neuron_color_low, neuron_color_high, WHITE));
-                DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , (Color){0x90, 0x90, 0x90, 0xFF});
+                DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , ring_color);
                 if (l == nn.n_layers) {
                     snprintf(buf, sizeof(buf), "%.2f", MAT_ELE(nn.as[l], i, 0));
                     DrawText(buf, neuron_center.x - 1.7*font_s/2, neuron_center.y - font_s/2, font_s, RED);
                 }
             }
             else {
+                ring_color = (Color){0x90, 0x90, 0x90, 0xFF};
                 DrawCircleV(neuron_center, circ_r, ColorAlphaBlend(neuron_color_low, neuron_color_high, WHITE));
-                DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , (Color){0x90, 0x90, 0x90, 0xFF});
+                DrawRing(neuron_center, circ_r, 1.07*circ_r, 0 , 360, 1 , ring_color);
                 snprintf(buf, sizeof(buf), "%.2f", MAT_ELE(ti, chosen_input, i));
                 DrawText(buf, neuron_center.x - 1.7*font_s/2, neuron_center.y - font_s/2, font_s, RED);
             }
@@ -523,6 +567,7 @@ void cost_plot_render(Plot plot, size_t epoch, size_t max_epochs, Box b) {
     DrawLineEx((Vector2){b.xpad, b.ypad+b.l}, (Vector2){b.xpad, b.ypad}, 0.01*b.l, RAYWHITE);
 
 }
+
 #endif // NN_GYM
 #endif // NN_IMPLEMENTATION 
 

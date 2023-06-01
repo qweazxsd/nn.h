@@ -4,7 +4,7 @@ set -xe
 
 export PKG_CONFIG_PATH=$HOME/Software/raylib/lib/pkgconfig/
 
-LIBS="-lm"
-CFLAGS="-Wall -Wextra"
+LIBS="-lm `pkg-config --libs raylib` -ldl"
+CFLAGS="-O3 -Wall -Wextra -I./External/ `pkg-config --cflags raylib`"
 
-clang `pkg-config --cflags raylib` -o xor xor.c `pkg-config --libs raylib` $LIBS
+clang  $CFLAGS -o xor xor.c  $LIBS
